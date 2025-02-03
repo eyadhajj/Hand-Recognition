@@ -1,13 +1,16 @@
 import cv2
 from PIL import Image
+import random as rd
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from mediapipe import solutions
 from mediapipe.framework.formats import landmark_pb2
 import numpy as np
+from keras.models import load_model
 
-hand_image_path = "hands/hand1.jpg"
+hand_image_path = "hands/hands3.jpg"
+
 
 try:
     hand_image = Image.open(hand_image_path)
@@ -30,7 +33,7 @@ def mp_input_image(image_path):
 image = mp_input_image(hand_image_path)
 
 base_options = python.BaseOptions(model_asset_path='hand_landmarker.task')
-options = vision.HandLandmarkerOptions(base_options=base_options, num_hands=2)
+options = vision.HandLandmarkerOptions(base_options=base_options, num_hands=4)
 
 detector = vision.HandLandmarker.create_from_options(options)
 
@@ -41,7 +44,7 @@ MARGIN = 10  # pixels
 FONT_SIZE = 1
 FONT_THICKNESS = 1
 HANDEDNESS_TEXT_COLOR = (88, 205, 54) # vibrant green
-LANDMARK_NUM_COLOR = (0, 0, 255) # red
+LANDMARK_NUM_COLOR = (255, 0, 0) 
 
 def draw_landmarks_on_image(rgb_image, detection_result):
     hand_landmarks_list = detection_result.hand_landmarks
@@ -50,11 +53,11 @@ def draw_landmarks_on_image(rgb_image, detection_result):
 
     base_palm = [5, 9, 13, 17]
 
-    # ✅ Debugging: Check if hands are detected
+    # Debugging: Check if hands are detected
     print(f"Detected {len(hand_landmarks_list)} hands")
 
     if len(hand_landmarks_list) == 0:
-        print("⚠️ No hands detected! Check image and lighting.")
+        print("No hands detected! Check image and lighting.")
         return annotated_image  # Return original image if no hands are found
 
     for idx, hand_landmarks in enumerate(hand_landmarks_list):
@@ -129,14 +132,107 @@ def draw_landmarks_blank(detction_result, image_size=(500,500), bg_colour=(0, 0,
 
 print(f"Image shape: {image.numpy_view().shape}")
 
-annotated_image = draw_landmarks_on_image(image.numpy_view(), detection_result)
+image_np = image.numpy_view()
+if image_np.shape[-1] == 4:  # If the image has an alpha channel (RGBA)
+    print(f"Converting image from RGBA to RGB.")
+    image_np = cv2.cvtColor(image_np, cv2.COLOR_RGBA2RGB)
+
+
+#Uncomment for hand recgonition on an image
+"""""
+annotated_image = draw_landmarks_on_image(image_np, detection_result)
 
 cv2.imshow("Hand Detection", cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))
 cv2.waitKey(0)
 cv2.destroyAllWindows()
+"""
 
+# Uncomment for hand recognition display on an empty canvas 
+"""
 landmark_only_image = draw_landmarks_blank(detection_result, image_size=(500, 500))
 
 cv2.imshow("Landmark-Only Display", landmark_only_image)
 cv2.waitKey(0)
+cv2.destroyAllWindows()
+"""
+
+
+# Live stream hand recognition
+
+mp_hands = mp.solutions.hands
+hands = mp_hands.Hands()
+mp_drawing_live = mp.solutions.drawing_utils
+
+gesture_model = load_model('mp_hand_gesture')
+
+# loading class names
+f = open('gesture.names', 'r')
+class_names = f.read().split('\n')
+f.close()
+print(class_names)
+
+
+stream = cv2.VideoCapture(0)
+
+while stream.isOpened():
+    ret , frame = stream.read()
+
+    if not ret:
+        continue
+
+    frame = cv2.flip(frame, 1)
+
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+    results = hands.process(frame_rgb)
+
+    if results.multi_hand_landmarks:
+
+
+        for hand_landmarks in results.multi_hand_landmarks:
+
+            height, width, _ = frame.shape
+
+            mp_drawing_live.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+            
+            for connection in solutions.hands.HAND_CONNECTIONS:
+                
+               
+                points = [(int(landmark.x * width), int(landmark.y * height)) for landmark in hand_landmarks.landmark]
+                color = (88, 205, 54)  # Random RGB color
+
+                start_idx, end_idx = connection
+                cv2.line(frame, points[start_idx], points[end_idx], color, 2)  # Blue lines for connections
+                
+            landmarks = []
+            for landmark in hand_landmarks.landmark:
+                lmx = (landmark.x * width)
+                lmy = (landmark.y * height)
+                
+                landmarks.append([lmx, lmy])
+            # Convert to a NumPy array and reshape for prediction (1, number_of_features)
+            
+            prediction = gesture_model.predict([landmarks])
+            print("Prediction:", prediction)
+
+            classID = np.argmax(prediction)
+            classID = int(classID)
+            print(f"Predicted classID: {classID}")
+ 
+            if classID >= 0 and classID < len(class_names):
+                class_name = class_names[classID]
+            else:
+                class_name = "Unknown Gesture"
+                print("Error: classID is out of range.")
+
+        cv2.putText(frame, class_name, (10,50), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
+
+        cv2.imshow('Live Hand Recognition', frame)
+
+    # Exit when 'q' is pressed
+    if cv2.waitKey(1) == ord('q'):
+        break
+
+# Release the video capture object and close the OpenCV windows
+stream.release()
 cv2.destroyAllWindows()
