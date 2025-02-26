@@ -114,19 +114,20 @@ def draw_landmarks_blank(detction_result, image_size=(500,500), bg_colour=(0, 0,
         print("No hands detected! Returning blank image.")
         return blank_image  # blank image if no hands are detected
 
-    for hand_landmarks in hand_landmarks_list:
-        # normalized coordinates to pixel coordinates
-        points = [(int(landmark.x * image_size[0]), int(landmark.y * image_size[1])) for landmark in hand_landmarks]
+    for hand_landmarks in hand_landmarks_list: # goes through all normalized coordinates of hand lanmarks
 
-        for idx, (x, y) in enumerate(points):
-            cv2.circle(blank_image, (x, y), 5, (0, 255, 0), -1)  # Green circles for landmarks
-            cv2.putText(blank_image, str(idx), (x + 5, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        # normalized coordinates to pixel coordinates
+        points = [(int(landmark.x * image_size[0]), int(landmark.y * image_size[1])) for landmark in hand_landmarks] #21 landmarks based off doumentation.
+
+        for idx, (x, y) in enumerate(points): # 21 landmarks
+            cv2.circle(blank_image, (x, y), 5, (0, 255, 0), -1)  # draws a green dot, at those coordinates, 5 pixel radius and -1 to represent filled
+            cv2.putText(blank_image, str(idx), (x + 5, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1) # add label text for landmark 
 
         # connections, will edit to better liking 
         for connection in solutions.hands.HAND_CONNECTIONS:
-            start_idx, end_idx = connection
-            cv2.line(blank_image, points[start_idx], points[end_idx], (255, 0, 0), 2)  # Blue lines for connections
-
+            start_idx, end_idx = connection # a start point to an endpoint is a connection
+            cv2.line(blank_image, points[start_idx], points[end_idx], (255, 0, 0), 2)  # draw line for those connections
+ 
     return blank_image
 
 
@@ -139,13 +140,13 @@ if image_np.shape[-1] == 4:  # If the image has an alpha channel (RGBA)
 
 
 #Uncomment for hand recgonition on an image
-"""""
-annotated_image = draw_landmarks_on_image(image_np, detection_result)
+# """""
+# annotated_image = draw_landmarks_on_image(image_np, detection_result)
 
-cv2.imshow("Hand Detection", cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))
-cv2.waitKey(0)
-cv2.destroyAllWindows()
-"""
+# cv2.imshow("Hand Detection", cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))
+# cv2.waitKey(0)
+# cv2.destroyAllWindows()
+# """
 
 # Uncomment for hand recognition display on an empty canvas 
 """
@@ -155,7 +156,6 @@ cv2.imshow("Landmark-Only Display", landmark_only_image)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
 """
-
 
 # Live stream hand recognition
 
@@ -171,6 +171,8 @@ class_names = f.read().split('\n')
 f.close()
 print(class_names)
 
+def calculate_distance(x1, y1, x2, y2):
+    return np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
 
 stream = cv2.VideoCapture(0)
 
@@ -188,7 +190,6 @@ while stream.isOpened():
 
     if results.multi_hand_landmarks:
 
-
         for hand_landmarks in results.multi_hand_landmarks:
 
             height, width, _ = frame.shape
@@ -197,12 +198,11 @@ while stream.isOpened():
             
             for connection in solutions.hands.HAND_CONNECTIONS:
                 
-               
                 points = [(int(landmark.x * width), int(landmark.y * height)) for landmark in hand_landmarks.landmark]
-                color = (88, 205, 54)  # Random RGB color
+                color = (255, 255, 255)  # Random RGB color
 
                 start_idx, end_idx = connection
-                cv2.line(frame, points[start_idx], points[end_idx], color, 2)  # Blue lines for connections
+                cv2.line(frame, points[start_idx], points[end_idx], color, 2) 
                 
             landmarks = []
             for landmark in hand_landmarks.landmark:
@@ -210,29 +210,43 @@ while stream.isOpened():
                 lmy = (landmark.y * height)
                 
                 landmarks.append([lmx, lmy])
-            # Convert to a NumPy array and reshape for prediction (1, number_of_features)
-            
-            prediction = gesture_model.predict([landmarks])
-            print("Prediction:", prediction)
 
-            classID = np.argmax(prediction)
-            classID = int(classID)
-            print(f"Predicted classID: {classID}")
- 
-            if classID >= 0 and classID < len(class_names):
-                class_name = class_names[classID]
+            input_data = np.array(landmarks).reshape(1, 21, 2) # numpy array layouts the landmarks, 2 hands == 41 landmarks with 2 coords each
+
+            prediction = gesture_model.predict(input_data) # using the input data, predict the gesture given from the model
+
+            confidence = np.max(prediction) # how confident the prediction is
+
+            print(f"Prediction: {prediction}, Confidence: {confidence}") # print 
+
+            classID = np.argmax(prediction) # name of gesure predictedf
+
+            if confidence > 0.7:  # Confidence threshold
+                class_name = class_names[classID] #  display the name of the predecicted gesture
             else:
-                class_name = "Unknown Gesture"
-                print("Error: classID is out of range.")
+                class_name = "Uncertain Gesture" # if not detected, display unknown
 
-        cv2.putText(frame, class_name, (10,50), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
+            cv2.putText(frame, class_name, (10, 50), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
+
+
+# To calculate distance between thumb tip and index finger tip -- to be used for gesture action
+            """
+            thumb_tip = hand_landmarks.landmark[4]
+            index_tip = hand_landmarks.landmark[8]
+            x1, y1 = int(thumb_tip.x * width), int(thumb_tip.y * height)
+            x2, y2 = int(index_tip.x * width), int(index_tip.y * height)
+            distance = calculate_distance(x1, y1, x2, y2)
+            cv2.line(frame, points[thumb_tip], points[index_tip], color, 2)
+            # Display distance on image
+            cv2.putText(frame, f'{distance:.2f} px', (x1 + 10, y1 - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            """
 
         cv2.imshow('Live Hand Recognition', frame)
 
-    # Exit when 'q' is pressed
-    if cv2.waitKey(1) == ord('q'):
+    # Exit when 'a' is pressed
+    if cv2.waitKey(1) == ord('a'):
         break
 
-# Release the video capture object and close the OpenCV windows
 stream.release()
 cv2.destroyAllWindows()
