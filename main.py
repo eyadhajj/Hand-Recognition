@@ -9,7 +9,21 @@ from mediapipe.framework.formats import landmark_pb2
 import numpy as np
 from keras.models import load_model
 
+
+# Variables 
 hand_image_path = "hands/hands3.jpg"
+base_options = python.BaseOptions(model_asset_path='hand_landmarker.task')
+options = vision.HandLandmarkerOptions(base_options=base_options, num_hands=4)
+detector = vision.HandLandmarker.create_from_options(options)
+MARGIN = 10  # pixels
+FONT_SIZE = 1
+FONT_THICKNESS = 1
+HANDEDNESS_TEXT_COLOR = (88, 205, 54) # vibrant green
+LANDMARK_NUM_COLOR = (255, 0, 0) 
+mp_hands = mp.solutions.hands
+hands = mp_hands.Hands()
+mp_drawing_live = mp.solutions.drawing_utils
+gesture_model = load_model('mp_hand_gesture')
 
 
 try:
@@ -29,22 +43,7 @@ def load_image(image_path):
 def mp_input_image(image_path):
     image = mp.Image.create_from_file(image_path)
     return image
-
 image = mp_input_image(hand_image_path)
-
-base_options = python.BaseOptions(model_asset_path='hand_landmarker.task')
-options = vision.HandLandmarkerOptions(base_options=base_options, num_hands=4)
-
-detector = vision.HandLandmarker.create_from_options(options)
-
-detection_result = detector.detect(image)
-
-
-MARGIN = 10  # pixels
-FONT_SIZE = 1
-FONT_THICKNESS = 1
-HANDEDNESS_TEXT_COLOR = (88, 205, 54) # vibrant green
-LANDMARK_NUM_COLOR = (255, 0, 0) 
 
 def draw_landmarks_on_image(rgb_image, detection_result):
     hand_landmarks_list = detection_result.hand_landmarks
@@ -140,13 +139,13 @@ if image_np.shape[-1] == 4:  # If the image has an alpha channel (RGBA)
 
 
 #Uncomment for hand recgonition on an image
-# """""
+"""
 # annotated_image = draw_landmarks_on_image(image_np, detection_result)
 
 # cv2.imshow("Hand Detection", cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))
 # cv2.waitKey(0)
 # cv2.destroyAllWindows()
-# """
+"""
 
 # Uncomment for hand recognition display on an empty canvas 
 """
@@ -159,17 +158,38 @@ cv2.destroyAllWindows()
 
 # Live stream hand recognition
 
-mp_hands = mp.solutions.hands
-hands = mp_hands.Hands()
-mp_drawing_live = mp.solutions.drawing_utils
-
-gesture_model = load_model('mp_hand_gesture')
-
 # loading class names
 f = open('gesture.names', 'r')
 class_names = f.read().split('\n')
 f.close()
 print(class_names)
+
+def draw_border(image, hand_landmarks):
+    
+    width = image.shape[1]
+    height =  image.shape[0]
+    x_cords = []
+    y_cords = []
+
+    border_spacing = 40
+
+    for landmark in hand_landmarks.landmark:
+        x_cords.append(int(landmark.x * width))
+        y_cords.append(int(landmark.y * height))
+
+    min_x_point = min(x_cords)
+    min_y_point = min(y_cords)
+
+    max_x_point = max(x_cords)
+    max_y_point = max(y_cords)
+
+
+    start_point = (min_x_point - border_spacing, min_y_point - border_spacing)
+    end_point = (max_x_point + border_spacing, max_y_point + border_spacing)
+    
+    cv2.rectangle(image, start_point, end_point, (255, 0, 0), 3)
+
+
 
 def calculate_distance(x1, y1, x2, y2):
     return np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
@@ -230,18 +250,23 @@ while stream.isOpened():
 
 
 # To calculate distance between thumb tip and index finger tip -- to be used for gesture action
-            """
             thumb_tip = hand_landmarks.landmark[4]
             index_tip = hand_landmarks.landmark[8]
-            x1, y1 = int(thumb_tip.x * width), int(thumb_tip.y * height)
-            x2, y2 = int(index_tip.x * width), int(index_tip.y * height)
-            distance = calculate_distance(x1, y1, x2, y2)
-            cv2.line(frame, points[thumb_tip], points[index_tip], color, 2)
-            # Display distance on image
-            cv2.putText(frame, f'{distance:.2f} px', (x1 + 10, y1 - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-            """
 
+            # Coordinates of thumb
+            x1, y1 = int(thumb_tip.x * width), int(thumb_tip.y * height)
+
+            # Coordinates of index finger
+            x2, y2 = int(index_tip.x * width), int(index_tip.y * height)
+
+            distance = calculate_distance(x1, y1, x2, y2) # distance calcuated (in pixels)
+
+            cv2.line(frame, (x1, y1), (x2, y2), (255, 0, 0), 2) # Draw a line connecting between thumb and index coordinates
+
+            # Display distance on image
+            cv2.putText(frame, f'{distance:.2f} px', (x1 + 10, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2) 
+
+        draw_border(frame, hand_landmarks)
         cv2.imshow('Live Hand Recognition', frame)
 
     # Exit when 'a' is pressed
