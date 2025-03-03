@@ -44,6 +44,7 @@ def mp_input_image(image_path):
     image = mp.Image.create_from_file(image_path)
     return image
 image = mp_input_image(hand_image_path)
+detection_result = detector.detect(image)
 
 def draw_landmarks_on_image(rgb_image, detection_result):
     hand_landmarks_list = detection_result.hand_landmarks
@@ -129,7 +130,6 @@ def draw_landmarks_blank(detction_result, image_size=(500,500), bg_colour=(0, 0,
  
     return blank_image
 
-
 print(f"Image shape: {image.numpy_view().shape}")
 
 image_np = image.numpy_view()
@@ -137,141 +137,8 @@ if image_np.shape[-1] == 4:  # If the image has an alpha channel (RGBA)
     print(f"Converting image from RGBA to RGB.")
     image_np = cv2.cvtColor(image_np, cv2.COLOR_RGBA2RGB)
 
-
-#Uncomment for hand recgonition on an image
-"""
-# annotated_image = draw_landmarks_on_image(image_np, detection_result)
-
-# cv2.imshow("Hand Detection", cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))
-# cv2.waitKey(0)
-# cv2.destroyAllWindows()
-"""
-
-# Uncomment for hand recognition display on an empty canvas 
-"""
 landmark_only_image = draw_landmarks_blank(detection_result, image_size=(500, 500))
 
 cv2.imshow("Landmark-Only Display", landmark_only_image)
 cv2.waitKey(0)
-cv2.destroyAllWindows()
-"""
-
-# Live stream hand recognition
-
-# loading class names
-f = open('gesture.names', 'r')
-class_names = f.read().split('\n')
-f.close()
-print(class_names)
-
-def draw_border(image, hand_landmarks):
-    
-    width = image.shape[1]
-    height =  image.shape[0]
-    x_cords = []
-    y_cords = []
-
-    border_spacing = 40
-
-    for landmark in hand_landmarks.landmark:
-        x_cords.append(int(landmark.x * width))
-        y_cords.append(int(landmark.y * height))
-
-    min_x_point = min(x_cords)
-    min_y_point = min(y_cords)
-
-    max_x_point = max(x_cords)
-    max_y_point = max(y_cords)
-
-
-    start_point = (min_x_point - border_spacing, min_y_point - border_spacing)
-    end_point = (max_x_point + border_spacing, max_y_point + border_spacing)
-    
-    cv2.rectangle(image, start_point, end_point, (255, 0, 0), 3)
-
-
-
-def calculate_distance(x1, y1, x2, y2):
-    return np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-
-stream = cv2.VideoCapture(0)
-
-while stream.isOpened():
-    ret , frame = stream.read()
-
-    if not ret:
-        continue
-
-    frame = cv2.flip(frame, 1)
-
-    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-    results = hands.process(frame_rgb)
-
-    if results.multi_hand_landmarks:
-
-        for hand_landmarks in results.multi_hand_landmarks:
-
-            height, width, _ = frame.shape
-
-            mp_drawing_live.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
-            
-            for connection in solutions.hands.HAND_CONNECTIONS:
-                
-                points = [(int(landmark.x * width), int(landmark.y * height)) for landmark in hand_landmarks.landmark]
-                color = (255, 255, 255)  # Random RGB color
-
-                start_idx, end_idx = connection
-                cv2.line(frame, points[start_idx], points[end_idx], color, 2) 
-                
-            landmarks = []
-            for landmark in hand_landmarks.landmark:
-                lmx = (landmark.x * width)
-                lmy = (landmark.y * height)
-                
-                landmarks.append([lmx, lmy])
-
-            input_data = np.array(landmarks).reshape(1, 21, 2) # numpy array layouts the landmarks, 2 hands == 41 landmarks with 2 coords each
-
-            prediction = gesture_model.predict(input_data) # using the input data, predict the gesture given from the model
-
-            confidence = np.max(prediction) # how confident the prediction is
-
-            print(f"Prediction: {prediction}, Confidence: {confidence}") # print 
-
-            classID = np.argmax(prediction) # name of gesure predictedf
-
-            if confidence > 0.7:  # Confidence threshold
-                class_name = class_names[classID] #  display the name of the predecicted gesture
-            else:
-                class_name = "Uncertain Gesture" # if not detected, display unknown
-
-            cv2.putText(frame, class_name, (10, 50), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
-
-
-# To calculate distance between thumb tip and index finger tip -- to be used for gesture action
-            thumb_tip = hand_landmarks.landmark[4]
-            index_tip = hand_landmarks.landmark[8]
-
-            # Coordinates of thumb
-            x1, y1 = int(thumb_tip.x * width), int(thumb_tip.y * height)
-
-            # Coordinates of index finger
-            x2, y2 = int(index_tip.x * width), int(index_tip.y * height)
-
-            distance = calculate_distance(x1, y1, x2, y2) # distance calcuated (in pixels)
-
-            cv2.line(frame, (x1, y1), (x2, y2), (255, 0, 0), 2) # Draw a line connecting between thumb and index coordinates
-
-            # Display distance on image
-            cv2.putText(frame, f'{distance:.2f} px', (x1 + 10, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2) 
-
-        draw_border(frame, hand_landmarks)
-        cv2.imshow('Live Hand Recognition', frame)
-
-    # Exit when 'a' is pressed
-    if cv2.waitKey(1) == ord('a'):
-        break
-
-stream.release()
 cv2.destroyAllWindows()
