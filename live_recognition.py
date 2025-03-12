@@ -24,7 +24,7 @@ LANDMARK_NUM_COLOR = (255, 0, 0)
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands()
 mp_drawing_live = mp.solutions.drawing_utils
-gesture_model = load_model('mp_hand_gesture')
+gesture_model = load_model('mp_hand_gesture') # Load model from keras -> pretrained neural network
 
 
 #===================================================================#
@@ -88,9 +88,9 @@ while stream.isOpened():
 
     frame = cv2.flip(frame, 1)
 
-    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB) # Convert the image from BGR to RGB, for mediapipe 
 
-    results = hands.process(frame_rgb)
+    results = hands.process(frame_rgb) # use the hand model to process the frame
 
     if results.multi_hand_landmarks:
 
@@ -98,6 +98,8 @@ while stream.isOpened():
 
             height, width, _ = frame.shape
 
+            # Drawing points on the screen
+            # This is going to be used to extract pixel colours so that I can make an algorithm to change connection color based off background
             top_left = (10, 10)
             top_right = (frame.shape[1] - 11, 10)
             bottom_left = (10, frame.shape[0] - 11)
@@ -108,7 +110,7 @@ while stream.isOpened():
             cv2.circle(frame, bottom_left, 10, (0,0,255), -1)
             cv2.circle(frame, bottom_right, 10, (0,0,255), -1)
 
-            mp_drawing_live.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+            mp_drawing_live.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS) # drawing the landmarks
             
             for connection in solutions.hands.HAND_CONNECTIONS:
                 
@@ -130,10 +132,14 @@ while stream.isOpened():
 #===================================================================#
 
             input_data = np.array(landmarks).reshape(1, 21, 2) # numpy array layouts the landmarks, 2 hands == 41 landmarks with 2 coords each
+            # batch size = 1, to process 1 hands landmark at a time, if i do 3 then it processes 3 sepate hands in parallel 
+            # 21 landmarks
+            # coords per landmark (x, y)
+
 
             prediction = gesture_model.predict(input_data) # using the input data, predict the gesture given from the model
             confidence = np.max(prediction) # how confident the prediction is
-            classID = np.argmax(prediction) # name of gesure predictedf
+            classID = np.argmax(prediction) # name of gesure predicted
 
             if confidence > 0.7:  # Confidence threshold
                 class_name = class_names[classID] #  display the name of the predecicted gesture
